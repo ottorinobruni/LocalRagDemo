@@ -11,9 +11,7 @@ The application reads a local document, splits it into chunks, generates embeddi
 This repository accompanies my two-part article series:
 
 - [Build a Local RAG Application in C# with Ollama and Qdrant - Part 1](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-1/)
-- **Build a Local RAG Application in C# with Ollama and Qdrant - Part 2** — add the published article URL here.
-
-Part 1 explains the architecture and local setup. Part 2 focuses on the C# implementation.
+- [Build a Local RAG Application in C# with Ollama and Qdrant - Part 2](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-2/)
 
 You may also find this introductory article useful:
 
@@ -23,9 +21,28 @@ You may also find this introductory article useful:
 
 The complete flow is:
 
-```text
-Document → Chunks → Embeddings → Qdrant → Retrieval → Prompt → LLM → Answer
+```mermaid
+flowchart LR
+    A[📄 Document] --> B[✂️ Chunks]
+    B --> C[🔢 Embeddings]
+    C --> D[(🗄️ Qdrant)]
+    D --> E[🔍 Retrieval]
+    E --> F[📝 Prompt]
+    F --> G[🤖 LLM]
+    G --> H[💬 Answer]
 ```
+
+### How it works
+
+1. **Document** — The source document is loaded.
+2. **Chunks** — The document is split into smaller pieces of text.
+3. **Embeddings** — Each chunk is converted into a numerical vector using an embedding model.
+4. **Qdrant** — The vectors and their associated text are stored in the Qdrant vector database.
+5. **Retrieval** — When the user asks a question, the most relevant chunks are retrieved using vector similarity.
+6. **Prompt** — The retrieved context is combined with the user's question.
+7. **LLM** — The final prompt is sent to the local language model.
+8. **Answer** — The model generates an answer based on the retrieved context.
+
 
 The project uses:
 
@@ -114,7 +131,7 @@ The `qdrant_storage` directory keeps the vector database data persistent when th
 Clone the repository:
 
 ```bash
-git clone <YOUR-REPOSITORY-URL>
+git clone https://github.com/ottorinobruni/LocalRagDemo
 cd LocalRagDemo
 ```
 
@@ -141,6 +158,9 @@ LocalRagDemo
 ├── Documents
 │   └── sample.txt
 ├── Models
+│   ├── OllamaEmbeddingResponse.cs
+│   ├── OllamaGenerateResponse.cs
+│   ├── SearchResult.cs
 │   └── DocumentChunk.cs
 ├── OllamaService.cs
 ├── QdrantVectorStore.cs
@@ -238,148 +258,6 @@ const string collectionName = "local-rag";
 ```
 
 If your services run on different ports or hosts, update these values accordingly.
-
-## Important Qdrant API Note
-
-Recent versions of `Qdrant.Client` deprecate `SearchAsync`.
-
-Use `QueryAsync` for vector retrieval instead.
-
-For example:
-
-```csharp
-var results = await _client.QueryAsync(
-    collectionName: _collectionName,
-    query: queryVector,
-    limit: limit,
-    cancellationToken: cancellationToken);
-```
-
-## Troubleshooting
-
-### Ollama returns `404 Not Found`
-
-First verify that Ollama is running:
-
-```bash
-curl http://localhost:11434/api/tags
-```
-
-Then verify the embedding endpoint:
-
-```bash
-curl http://localhost:11434/api/embed \
-  -d '{
-    "model": "nomic-embed-text",
-    "input": "Hello world"
-  }'
-```
-
-Also confirm that the model is installed:
-
-```bash
-ollama list
-```
-
-### Qdrant gRPC `PROTOCOL_ERROR`
-
-The .NET `QdrantClient` uses gRPC.
-
-Make sure the application connects to port:
-
-```text
-6334
-```
-
-Do not use `6333` with the gRPC client.
-
-Your Docker container should expose both ports:
-
-```bash
-docker run -p 6333:6333 -p 6334:6334 \
-    -v "$(pwd)/qdrant_storage:/qdrant/storage:z" \
-    qdrant/qdrant
-```
-
-### `sample.txt` Cannot Be Found
-
-Make sure the file is copied to the output directory through the `.csproj` configuration shown above.
-
-Use:
-
-```csharp
-var documentPath = Path.Combine(
-    AppContext.BaseDirectory,
-    "Documents",
-    "sample.txt");
-```
-
-instead of relying on the current working directory.
-
-### Cannot Enter Text While Debugging in VS Code
-
-For an interactive console application, run:
-
-```bash
-dotnet run
-```
-
-from the integrated terminal.
-
-Alternatively, configure VS Code to use:
-
-```json
-"console": "integratedTerminal"
-```
-
-in `.vscode/launch.json`.
-
-## Security Considerations
-
-Even in a fully local RAG system, security still matters.
-
-Documents, embeddings, and vector database content may contain sensitive information. In a real-world application:
-
-- Restrict access to local documents and Qdrant storage.
-- Avoid indexing credentials, secrets, or unnecessary sensitive data.
-- Validate and sanitize imported documents.
-- Treat retrieved document content as untrusted input.
-- Protect Ollama and Qdrant if they are exposed outside `localhost`.
-
-Running everything locally improves privacy, but it does not automatically make the system secure.
-
-## Limitations
-
-This project intentionally keeps the implementation small.
-
-A production-ready RAG system could include:
-
-- Better chunking strategies.
-- Token-aware or semantic chunking.
-- PDF and Word document support.
-- Multiple-document ingestion.
-- Metadata filtering.
-- Hybrid search.
-- Reranking.
-- Source citations.
-- Document update and deletion workflows.
-- Caching.
-- Evaluation and quality metrics.
-- Authentication and authorization.
-
-## Why No Semantic Kernel or Kernel Memory?
-
-This example intentionally uses Ollama and Qdrant more directly.
-
-Higher-level frameworks such as Semantic Kernel or Kernel Memory can reduce the amount of code required, but they also abstract away important parts of the RAG pipeline.
-
-The goal of this repository is to make the main steps visible:
-
-```text
-chunk → embedding → vector storage → retrieval → context → LLM
-```
-
-Once these concepts are clear, using a higher-level framework becomes much easier to understand.
 
 ## Resources
 
