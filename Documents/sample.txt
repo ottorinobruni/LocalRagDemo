@@ -1,0 +1,5 @@
+The Product API uses OpenID Connect for authentication.
+Users authenticate through the company identity provider.
+The application is deployed using Docker containers.
+Production workloads run on Kubernetes.
+Application logs are collected using OpenTelemetry.
