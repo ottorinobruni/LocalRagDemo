@@ -271,8 +271,8 @@ If your services run on different ports or hosts, update these values accordingl
 
 Created by **Ottorino Bruni**.
 
-- Website: [ottorinobruni.com](https://www.ottorinobruni.com/)
-- GitHub: [ottorinobruni](https://github.com/ottorinobruni)
+- Blog: [ottorinobruni.com](https://www.ottorinobruni.com/)
+- Linkedin: [www.linkedin.com/in/ottorinobruni](https://www.linkedin.com/in/ottorinobruni/)
 - X / Twitter: [@ottorinobruni](https://twitter.com/ottorinobruni)
 
 If you found the project useful, you can follow the complete explanation in the related article series linked above.
