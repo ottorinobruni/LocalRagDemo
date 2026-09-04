@@ -8,10 +8,11 @@ The application reads a local document, splits it into chunks, generates embeddi
 
 ## Related Articles
 
-This repository accompanies my two-part article series:
+This repository accompanies my article series:
 
 - [Build a Local RAG Application in C# with Ollama and Qdrant - Part 1](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-1/)
 - [Build a Local RAG Application in C# with Ollama and Qdrant - Part 2](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-2/)
+- [Build a Local RAG Application in C# with Ollama and Qdrant - Part 3](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-3/)
 
 You may also find this introductory article useful:
 
@@ -43,16 +44,39 @@ flowchart LR
 7. **LLM** — The final prompt is sent to the local language model.
 8. **Answer** — The model generates an answer based on the retrieved context.
 
-
 The project uses:
 
-- **C# / .NET** to coordinate the RAG pipeline.
+- **C# / .NET 10** to implement the RAG pipeline.
+- **Microsoft.Extensions.AI** to provide abstractions for chat and embedding generation.
+- **Microsoft.Extensions.VectorData** to provide abstractions for vector storage and vector search.
+- **OllamaSharp** to integrate Ollama with `Microsoft.Extensions.AI`.
+- **CommunityToolkit.VectorData.Qdrant** to integrate Qdrant with `Microsoft.Extensions.VectorData`.
 - **Ollama** to run the local AI models.
 - **nomic-embed-text** to generate embeddings.
 - **llama3.2** to generate the final answer.
 - **Qdrant** to store embeddings and perform vector similarity search.
 
 Everything can run locally on your machine.
+
+## What's New in Part 3
+
+Part 3 simplifies the implementation by replacing several custom integrations with standard .NET AI abstractions.
+
+The main changes are:
+
+- Replaced the custom Ollama HTTP integration with `Microsoft.Extensions.AI` and `OllamaSharp`.
+- Replaced the custom Qdrant vector store implementation with `Microsoft.Extensions.VectorData`.
+- Added `CommunityToolkit.VectorData.Qdrant` as the Qdrant VectorData provider.
+- Removed the custom Ollama request and response models.
+- Removed the custom `SearchResult` model.
+- Removed the custom `QdrantVectorStore` implementation.
+- Reduced infrastructure code while keeping the RAG pipeline explicit and easy to understand.
+
+The overall RAG flow remains the same:
+
+```text
+Document → Chunks → Embeddings → Vector Store → Retrieval → Prompt → LLM → Answer
+```
 
 ## Prerequisites
 
@@ -141,32 +165,37 @@ Restore the dependencies:
 dotnet restore
 ```
 
-The project uses the official Qdrant .NET client:
+The project uses the following main NuGet packages:
 
 ```bash
+dotnet add package Microsoft.Extensions.AI
+dotnet add package Microsoft.Extensions.VectorData.Abstractions
+dotnet add package OllamaSharp
+dotnet add package CommunityToolkit.VectorData.Qdrant
 dotnet add package Qdrant.Client
 ```
 
-Ollama is accessed directly through its local HTTP API using `HttpClient`.
+`Microsoft.Extensions.AI` provides common abstractions for chat and embedding generation.
+
+`Microsoft.Extensions.VectorData` provides common abstractions for vector stores and vector search.
+
+Ollama is integrated through `OllamaSharp`, while Qdrant is integrated through `CommunityToolkit.VectorData.Qdrant`.
 
 ## Project Structure
 
-A minimal version of the project looks like this:
+The current version of the project has a simpler structure thanks to the abstractions provided by `Microsoft.Extensions.AI` and `Microsoft.Extensions.VectorData`.
 
 ```text
 LocalRagDemo
 ├── Documents
 │   └── sample.txt
 ├── Models
-│   ├── OllamaEmbeddingResponse.cs
-│   ├── OllamaGenerateResponse.cs
-│   ├── SearchResult.cs
 │   └── DocumentChunk.cs
-├── OllamaService.cs
-├── QdrantVectorStore.cs
 ├── Program.cs
 └── LocalRagDemo.csproj
 ```
+
+The custom Ollama response models, `OllamaService`, `SearchResult`, and the custom `QdrantVectorStore` used in Part 2 are no longer needed.
 
 ## 4. Add a Document
 
@@ -204,13 +233,13 @@ The application will:
 
 1. Read the local document.
 2. Split it into smaller chunks.
-3. Generate an embedding for each chunk using `nomic-embed-text`.
-4. Store the vectors and document text in Qdrant.
+3. Generate embeddings for each chunk using `nomic-embed-text` through `IEmbeddingGenerator`.
+4. Store the chunks and vectors in Qdrant through `Microsoft.Extensions.VectorData`.
 5. Wait for a user question.
 6. Generate an embedding for the question.
-7. Retrieve the most relevant chunks from Qdrant.
+7. Retrieve the most relevant chunks using VectorData.
 8. Build a prompt containing the retrieved context.
-9. Ask `llama3.2` to answer using that context.
+9. Ask `llama3.2` through `IChatClient` to answer using that context.
 
 You should see output similar to:
 
@@ -241,26 +270,49 @@ And also test a question whose answer does not exist in the document:
 Which database does the application use?
 ```
 
-The prompt instructs the local LLM to use only the retrieved context and avoid inventing information that is not present in the documents.
+The prompt instructs the local LLM to answer using only the retrieved context and avoid inventing information that is not present in the document.
+
+The application also uses a minimum similarity score to avoid passing weakly related chunks to the language model.
 
 ## Configuration
 
 The default configuration used by the sample application is:
 
 ```csharp
-const string ollamaUrl = "http://localhost:11434";
-const string qdrantHost = "localhost";
-const int qdrantPort = 6334;
+const string OllamaUrl = "http://localhost:11434";
+const string ChatModel = "llama3.2";
+const string EmbeddingModel = "nomic-embed-text";
 
-const string embeddingModel = "nomic-embed-text";
-const string chatModel = "llama3.2";
-const string collectionName = "local-rag";
+const string QdrantHost = "localhost";
+const int QdrantPort = 6334;
+const string CollectionName = "local-rag";
+
+const int ChunkSize = 800;
+const int ChunkOverlap = 100;
+const int TopResults = 3;
+const double MinimumScore = 0.5;
 ```
 
 If your services run on different ports or hosts, update these values accordingly.
 
+## Article Versions
+
+Each article corresponds to a tagged version of the repository:
+
+- `part-1` — Initial project setup.
+- `part-2` — Manual RAG implementation with Ollama and Qdrant.
+- `part-3` — RAG implementation using `Microsoft.Extensions.AI` and `Microsoft.Extensions.VectorData`.
+
+You can check out a specific version using:
+
+```bash
+git checkout part-3
+```
+
 ## Resources
 
+- [Microsoft.Extensions.AI](https://learn.microsoft.com/dotnet/ai/microsoft-extensions-ai)
+- [Microsoft.Extensions.VectorData](https://learn.microsoft.com/dotnet/ai/vector-data)
 - [Ollama](https://ollama.com/)
 - [Ollama API Documentation](https://docs.ollama.com/api/introduction)
 - [Qdrant](https://qdrant.tech/)
@@ -272,7 +324,7 @@ If your services run on different ports or hosts, update these values accordingl
 Created by **Ottorino Bruni**.
 
 - Blog: [ottorinobruni.com](https://www.ottorinobruni.com/)
-- Linkedin: [www.linkedin.com/in/ottorinobruni](https://www.linkedin.com/in/ottorinobruni/)
+- LinkedIn: [www.linkedin.com/in/ottorinobruni](https://www.linkedin.com/in/ottorinobruni/)
 - X / Twitter: [@ottorinobruni](https://twitter.com/ottorinobruni)
 
 If you found the project useful, you can follow the complete explanation in the related article series linked above.
