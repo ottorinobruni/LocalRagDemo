@@ -3,7 +3,10 @@ using System.Text;
 using CommunityToolkit.VectorData.Qdrant;
 using LocalRagDemo.Models;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DataIngestion;
+using Microsoft.Extensions.DataIngestion.Chunkers;
 using Microsoft.Extensions.VectorData;
+using Microsoft.ML.Tokenizers;
 using OllamaSharp;
 using Qdrant.Client;
 
@@ -15,8 +18,9 @@ const string QdrantHost = "localhost";
 const int QdrantPort = 6334;
 const string CollectionName = "local-rag";
 
-const int ChunkSize = 800;
-const int ChunkOverlap = 100;
+const int MaxTokensPerChunk = 200;
+const int OverlapTokens = 30;
+
 const int TopResults = 3;
 const double MinimumScore = 0.5;
 
@@ -56,7 +60,7 @@ using var vectorCollection =
 await vectorCollection.EnsureCollectionExistsAsync();
 
 //
-// Read the document
+// Document ingestion
 //
 
 const string DocumentName = "sample.txt";
@@ -72,21 +76,41 @@ if (!File.Exists(documentPath))
     return;
 }
 
-var text = await File.ReadAllTextAsync(documentPath);
+var reader = new MarkdownReader();
 
-//
-// Chunking
-//
-// We keep this explicit for now.
-// Part 4 will replace it with Microsoft.Extensions.DataIngestion.
-//
+var document = await reader.ReadAsync(
+    new FileInfo(documentPath),
+    DocumentName);
 
-var chunks = SplitDocument(
-        DocumentName,
-        text,
-        ChunkSize,
-        ChunkOverlap)
-    .ToList();
+var tokenizer =
+    TiktokenTokenizer.CreateForModel("gpt-4o");
+
+var chunker = new DocumentTokenChunker(
+    new IngestionChunkerOptions(tokenizer)
+    {
+        MaxTokensPerChunk = MaxTokensPerChunk,
+        OverlapTokens = OverlapTokens
+    });
+
+var chunks = new List<DocumentChunk>();
+
+var chunkIndex = 0;
+
+await foreach (var chunk in chunker.ProcessAsync(document))
+{
+    chunks.Add(new DocumentChunk
+    {
+        Id = CreateChunkId(
+            DocumentName,
+            chunkIndex),
+
+        DocumentName = DocumentName,
+        ChunkIndex = chunkIndex,
+        Text = chunk.Content
+    });
+
+    chunkIndex++;
+}
 
 //
 // Generate embeddings and store the chunks
@@ -102,7 +126,9 @@ for (var i = 0; i < chunks.Count; i++)
 
 await vectorCollection.UpsertAsync(chunks);
 
-Console.WriteLine($"Indexed {chunks.Count} document chunks.");
+Console.WriteLine(
+    $"Indexed {chunks.Count} document chunks.");
+
 Console.WriteLine();
 Console.WriteLine("Ask a question about the document.");
 Console.WriteLine("Type 'exit' to quit.");
@@ -122,7 +148,9 @@ while (true)
         continue;
     }
 
-    if (question.Equals("exit", StringComparison.OrdinalIgnoreCase))
+    if (question.Equals(
+        "exit",
+        StringComparison.OrdinalIgnoreCase))
     {
         break;
     }
@@ -130,13 +158,14 @@ while (true)
     var questionEmbeddings =
         await embeddingGenerator.GenerateAsync([question]);
 
-    var questionVector = questionEmbeddings[0].Vector;
+    var questionVector =
+        questionEmbeddings[0].Vector;
 
     var context = new StringBuilder();
     var matches = 0;
 
     var results = vectorCollection.SearchAsync(
-        questionVector, 
+        questionVector,
         top: TopResults,
         options: new VectorSearchOptions<DocumentChunk>
         {
@@ -192,61 +221,21 @@ while (true)
         });
 
     Console.WriteLine();
-    Console.WriteLine($"Assistant: {response.Text}");
+    Console.WriteLine(
+        $"Assistant: {response.Text}");
 }
 
-static IEnumerable<DocumentChunk> SplitDocument(
-    string documentName,
-    string text,
-    int chunkSize,
-    int overlap)
-{
-    if (chunkSize <= overlap)
-    {
-        throw new ArgumentException(
-            "Chunk size must be greater than the overlap.",
-            nameof(chunkSize));
-    }
-
-    var chunkIndex = 0;
-    var start = 0;
-
-    while (start < text.Length)
-    {
-        var length = Math.Min(chunkSize, text.Length - start);
-
-        var chunkText = text
-            .Substring(start, length)
-            .Trim();
-
-        if (!string.IsNullOrWhiteSpace(chunkText))
-        {
-            yield return new DocumentChunk
-            {
-                Id = CreateChunkId(documentName, chunkIndex),
-                DocumentName = documentName,
-                ChunkIndex = chunkIndex,
-                Text = chunkText
-            };
-
-            chunkIndex++;
-        }
-
-        if (start + length >= text.Length)
-        {
-            break;
-        }
-
-        start += length - overlap;
-    }
-}
-
+//
 // Builds a stable identifier so that re-running the application
 // overwrites the existing chunks instead of duplicating them.
-// This is an identifier, not a security hash.
-static Guid CreateChunkId(string documentName, int chunkIndex)
+//
+
+static Guid CreateChunkId(
+    string documentName,
+    int chunkIndex)
 {
-    var bytes = Encoding.UTF8.GetBytes($"{documentName}:{chunkIndex}");
+    var bytes = Encoding.UTF8.GetBytes(
+        $"{documentName}:{chunkIndex}");
 
     return new Guid(MD5.HashData(bytes));
 }

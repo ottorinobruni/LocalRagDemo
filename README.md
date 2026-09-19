@@ -2,7 +2,7 @@
 
 A simple educational project that demonstrates how to build a fully local Retrieval-Augmented Generation (RAG) application using **C#**, **Ollama**, and **Qdrant**.
 
-The application reads a local document, splits it into chunks, generates embeddings, stores them in Qdrant, retrieves the most relevant context for a question, and sends that context to a local LLM running through Ollama.
+The application reads a local document through `Microsoft.Extensions.DataIngestion`, splits it into token-based chunks, generates embeddings, stores them in Qdrant, retrieves the most relevant context for a question, and sends that context to a local LLM running through Ollama.
 
 > **Disclaimer:** This project is purely for educational purposes. There are better ways to structure, secure, and optimize real-world applications. Use it as a starting point for learning and adapt it to your production requirements.
 
@@ -13,6 +13,7 @@ This repository accompanies my article series:
 - [Build a Local RAG Application in C# with Ollama and Qdrant - Part 1](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-1/)
 - [Build a Local RAG Application in C# with Ollama and Qdrant - Part 2](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-2/)
 - [Build a Local RAG Application in C# with Ollama and Qdrant - Part 3](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-3/)
+- [Build a Local RAG Application in C# with Ollama and Qdrant - Part 4](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-4/)
 
 You may also find this introductory article useful:
 
@@ -24,31 +25,36 @@ The complete flow is:
 
 ```mermaid
 flowchart LR
-    A[📄 Document] --> B[✂️ Chunks]
-    B --> C[🔢 Embeddings]
-    C --> D[(🗄️ Qdrant)]
-    D --> E[🔍 Retrieval]
-    E --> F[📝 Prompt]
-    F --> G[🤖 LLM]
-    G --> H[💬 Answer]
+    A[📄 Document] --> B[📥 IngestionDocument]
+    B --> C[✂️ Token-based Chunks]
+    C --> D[🔢 Embeddings]
+    D --> E[(🗄️ Qdrant)]
+    E --> F[🔍 Retrieval]
+    F --> G[📝 Prompt]
+    G --> H[🤖 LLM]
+    H --> I[💬 Answer]
 ```
 
 ### How it works
 
-1. **Document** — The source document is loaded.
-2. **Chunks** — The document is split into smaller pieces of text.
-3. **Embeddings** — Each chunk is converted into a numerical vector using an embedding model.
-4. **Qdrant** — The vectors and their associated text are stored in the Qdrant vector database.
-5. **Retrieval** — When the user asks a question, the most relevant chunks are retrieved using vector similarity.
-6. **Prompt** — The retrieved context is combined with the user's question.
-7. **LLM** — The final prompt is sent to the local language model.
-8. **Answer** — The model generates an answer based on the retrieved context.
+1. **Document** — The source document is loaded through the ingestion layer.
+2. **IngestionDocument** — The reader converts the source into a normalized document representation.
+3. **Chunks** — `DocumentTokenChunker` splits the document into token-based chunks with overlap.
+4. **Embeddings** — Each chunk is converted into a numerical vector using an embedding model.
+5. **Qdrant** — The vectors and their associated text are stored in the Qdrant vector database.
+6. **Retrieval** — When the user asks a question, the most relevant chunks are retrieved using vector similarity.
+7. **Prompt** — The retrieved context is combined with the user's question.
+8. **LLM** — The final prompt is sent to the local language model.
+9. **Answer** — The model generates an answer based on the retrieved context.
 
 The project uses:
 
 - **C# / .NET 10** to implement the RAG pipeline.
 - **Microsoft.Extensions.AI** to provide abstractions for chat and embedding generation.
 - **Microsoft.Extensions.VectorData** to provide abstractions for vector storage and vector search.
+- **Microsoft.Extensions.DataIngestion** to read and prepare documents for chunking.
+- **Microsoft.Extensions.DataIngestion.Markdig** to read the sample text document into an `IngestionDocument`.
+- **Microsoft.ML.Tokenizers** to support token-based chunking.
 - **OllamaSharp** to integrate Ollama with `Microsoft.Extensions.AI`.
 - **CommunityToolkit.VectorData.Qdrant** to integrate Qdrant with `Microsoft.Extensions.VectorData`.
 - **Ollama** to run the local AI models.
@@ -58,24 +64,26 @@ The project uses:
 
 Everything can run locally on your machine.
 
-## What's New in Part 3
+## What's New in Part 4
 
-Part 3 simplifies the implementation by replacing several custom integrations with standard .NET AI abstractions.
+Part 4 improves the document ingestion stage while keeping the AI, vector-store, retrieval, and generation pipeline from Part 3 unchanged.
 
 The main changes are:
 
-- Replaced the custom Ollama HTTP integration with `Microsoft.Extensions.AI` and `OllamaSharp`.
-- Replaced the custom Qdrant vector store implementation with `Microsoft.Extensions.VectorData`.
-- Added `CommunityToolkit.VectorData.Qdrant` as the Qdrant VectorData provider.
-- Removed the custom Ollama request and response models.
-- Removed the custom `SearchResult` model.
-- Removed the custom `QdrantVectorStore` implementation.
-- Reduced infrastructure code while keeping the RAG pipeline explicit and easy to understand.
+- Added `Microsoft.Extensions.DataIngestion`.
+- Added `Microsoft.Extensions.DataIngestion.Markdig`.
+- Replaced `File.ReadAllTextAsync` with a document reader that produces an `IngestionDocument`.
+- Replaced the custom `SplitDocument` method with `DocumentTokenChunker`.
+- Replaced character-based chunking with token-based chunking.
+- Added configurable token overlap between consecutive chunks.
+- Added `Microsoft.ML.Tokenizers.Data.O200kBase` for the local tokenizer data used by `TiktokenTokenizer`.
+- Kept the existing `DocumentChunk` model and mapped ingestion chunks into it.
+- Kept `Microsoft.Extensions.AI`, `Microsoft.Extensions.VectorData`, Ollama, and Qdrant unchanged.
 
-The overall RAG flow remains the same:
+The overall RAG flow is still familiar, but document preparation is now handled by a dedicated ingestion layer:
 
 ```text
-Document → Chunks → Embeddings → Vector Store → Retrieval → Prompt → LLM → Answer
+Document → IngestionDocument → Token-based Chunks → Embeddings → Vector Store → Retrieval → Prompt → LLM → Answer
 ```
 
 ## Prerequisites
@@ -169,7 +177,9 @@ The project uses the following main NuGet packages:
 
 ```bash
 dotnet add package Microsoft.Extensions.AI
-dotnet add package Microsoft.Extensions.VectorData.Abstractions
+dotnet add package Microsoft.Extensions.DataIngestion --version 10.10.0-preview.1.26459.2
+dotnet add package Microsoft.Extensions.DataIngestion.Markdig --version 10.10.0-preview.1.26459.2
+dotnet add package Microsoft.ML.Tokenizers.Data.O200kBase --version 2.0.0
 dotnet add package OllamaSharp
 dotnet add package CommunityToolkit.VectorData.Qdrant
 dotnet add package Qdrant.Client
@@ -177,13 +187,17 @@ dotnet add package Qdrant.Client
 
 `Microsoft.Extensions.AI` provides common abstractions for chat and embedding generation.
 
-`Microsoft.Extensions.VectorData` provides common abstractions for vector stores and vector search.
+`Microsoft.Extensions.DataIngestion` provides abstractions for document reading and chunking.
+
+`Microsoft.Extensions.DataIngestion.Markdig` provides the reader used to convert `sample.txt` into an `IngestionDocument`.
+
+`Microsoft.ML.Tokenizers.Data.O200kBase` provides the tokenizer data required by `TiktokenTokenizer.CreateForModel("gpt-4o")`. The tokenizer is used locally only to count tokens and determine chunk boundaries; the application still uses `nomic-embed-text` for embeddings and `llama3.2` for generation.
 
 Ollama is integrated through `OllamaSharp`, while Qdrant is integrated through `CommunityToolkit.VectorData.Qdrant`.
 
 ## Project Structure
 
-The current version of the project has a simpler structure thanks to the abstractions provided by `Microsoft.Extensions.AI` and `Microsoft.Extensions.VectorData`.
+The current version of the project keeps a small structure while using `Microsoft.Extensions.DataIngestion`, `Microsoft.Extensions.AI`, and `Microsoft.Extensions.VectorData` for the main RAG building blocks.
 
 ```text
 LocalRagDemo
@@ -207,7 +221,7 @@ Documents/sample.txt
 
 You can replace the sample content with any text you want to query.
 
-The project currently focuses on plain text files to keep the example centered on the RAG pipeline. PDF, Word, OCR, and more advanced document parsing are intentionally outside the scope of this demo.
+The project currently focuses on a simple `sample.txt` file. It is read through the Markdown reader from `Microsoft.Extensions.DataIngestion.Markdig`, which gives the application an `IngestionDocument` without requiring a custom reader. PDF, Word, OCR, and more advanced document parsing are intentionally outside the scope of this demo.
 
 The project file should copy the `Documents` directory to the output folder:
 
@@ -231,15 +245,16 @@ dotnet run
 
 The application will:
 
-1. Read the local document.
-2. Split it into smaller chunks.
-3. Generate embeddings for each chunk using `nomic-embed-text` through `IEmbeddingGenerator`.
-4. Store the chunks and vectors in Qdrant through `Microsoft.Extensions.VectorData`.
-5. Wait for a user question.
-6. Generate an embedding for the question.
-7. Retrieve the most relevant chunks using VectorData.
-8. Build a prompt containing the retrieved context.
-9. Ask `llama3.2` through `IChatClient` to answer using that context.
+1. Read the local document into an `IngestionDocument`.
+2. Split it into token-based chunks with `DocumentTokenChunker`.
+3. Map the ingestion chunks into the existing `DocumentChunk` model.
+4. Generate embeddings for each chunk using `nomic-embed-text` through `IEmbeddingGenerator`.
+5. Store the chunks and vectors in Qdrant through `Microsoft.Extensions.VectorData`.
+6. Wait for a user question.
+7. Generate an embedding for the question.
+8. Retrieve the most relevant chunks using VectorData.
+9. Build a prompt containing the retrieved context.
+10. Ask `llama3.2` through `IChatClient` to answer using that context.
 
 You should see output similar to:
 
@@ -287,8 +302,8 @@ const string QdrantHost = "localhost";
 const int QdrantPort = 6334;
 const string CollectionName = "local-rag";
 
-const int ChunkSize = 800;
-const int ChunkOverlap = 100;
+const int MaxTokensPerChunk = 200;
+const int OverlapTokens = 30;
 const int TopResults = 3;
 const double MinimumScore = 0.5;
 ```
@@ -302,17 +317,19 @@ Each article corresponds to a tagged version of the repository:
 - `part-1` — Initial project setup.
 - `part-2` — Manual RAG implementation with Ollama and Qdrant.
 - `part-3` — RAG implementation using `Microsoft.Extensions.AI` and `Microsoft.Extensions.VectorData`.
+- `part-4` — Document ingestion using `Microsoft.Extensions.DataIngestion` and token-based chunking.
 
 You can check out a specific version using:
 
 ```bash
-git checkout part-3
+git checkout part-4
 ```
 
 ## Resources
 
 - [Microsoft.Extensions.AI](https://learn.microsoft.com/dotnet/ai/microsoft-extensions-ai)
 - [Microsoft.Extensions.VectorData](https://learn.microsoft.com/dotnet/ai/vector-data)
+- [Microsoft.Extensions.DataIngestion](https://learn.microsoft.com/dotnet/ai/conceptual/data-ingestion)
 - [Ollama](https://ollama.com/)
 - [Ollama API Documentation](https://docs.ollama.com/api/introduction)
 - [Qdrant](https://qdrant.tech/)
