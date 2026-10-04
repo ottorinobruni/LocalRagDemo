@@ -2,6 +2,8 @@
 using System.Text;
 using CommunityToolkit.VectorData.Qdrant;
 using LocalRagDemo.Models;
+using LocalRagDemo.Services;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DataIngestion;
 using Microsoft.Extensions.DataIngestion.Chunkers;
@@ -11,47 +13,48 @@ using OllamaSharp;
 using Qdrant.Client;
 
 const string OllamaUrl = "http://localhost:11434";
+
 const string ChatModel = "llama3.2";
 const string EmbeddingModel = "nomic-embed-text";
 
 const string QdrantHost = "localhost";
 const int QdrantPort = 6334;
-const string CollectionName = "local-rag";
+
+const string CollectionName = "local-rag-agent";
 
 const int MaxTokensPerChunk = 200;
 const int OverlapTokens = 30;
 
-const int TopResults = 3;
-const double MinimumScore = 0.5;
-
 //
-// AI clients
+// Ollama clients
 //
 
-using var chatOllama = new OllamaApiClient(
-    new Uri(OllamaUrl),
-    ChatModel);
+using var chatOllama =
+    new OllamaApiClient(
+        new Uri(OllamaUrl),
+        ChatModel);
 
-using var embeddingOllama = new OllamaApiClient(
-    new Uri(OllamaUrl),
-    EmbeddingModel);
+using var embeddingOllama =
+    new OllamaApiClient(
+        new Uri(OllamaUrl),
+        EmbeddingModel);
 
-IChatClient chatClient = chatOllama;
-
-IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator =
-    embeddingOllama;
+IEmbeddingGenerator<string, Embedding<float>>
+    embeddingGenerator = embeddingOllama;
 
 //
-// Qdrant through VectorData
+// Qdrant
 //
 
-var qdrantClient = new QdrantClient(
-    QdrantHost,
-    QdrantPort);
+var qdrantClient =
+    new QdrantClient(
+        QdrantHost,
+        QdrantPort);
 
-using var vectorStore = new QdrantVectorStore(
-    qdrantClient,
-    ownsClient: true);
+using var vectorStore =
+    new QdrantVectorStore(
+        qdrantClient,
+        ownsClient: true);
 
 using var vectorCollection =
     vectorStore.GetCollection<Guid, DocumentChunk>(
@@ -63,85 +66,170 @@ await vectorCollection.EnsureCollectionExistsAsync();
 // Document ingestion
 //
 
-const string DocumentName = "sample.txt";
+var documentsPath =
+    Path.Combine(
+        AppContext.BaseDirectory,
+        "Documents");
 
-var documentPath = Path.Combine(
-    AppContext.BaseDirectory,
-    "Documents",
-    DocumentName);
-
-if (!File.Exists(documentPath))
+if (!Directory.Exists(documentsPath))
 {
-    Console.WriteLine($"Document not found: {documentPath}");
+    Console.WriteLine(
+        $"Documents directory not found: {documentsPath}");
+
     return;
 }
 
-var reader = new MarkdownReader();
+var documentFiles =
+    Directory.GetFiles(
+        documentsPath,
+        "*.md");
 
-var document = await reader.ReadAsync(
-    new FileInfo(documentPath),
-    DocumentName);
+if (documentFiles.Length == 0)
+{
+    Console.WriteLine(
+        "No Markdown documents were found.");
+
+    return;
+}
+
+var reader =
+    new MarkdownReader();
 
 var tokenizer =
-    TiktokenTokenizer.CreateForModel("gpt-4o");
+    TiktokenTokenizer.CreateForModel(
+        "gpt-4o");
 
-var chunker = new DocumentTokenChunker(
-    new IngestionChunkerOptions(tokenizer)
-    {
-        MaxTokensPerChunk = MaxTokensPerChunk,
-        OverlapTokens = OverlapTokens
-    });
+var chunker =
+    new DocumentTokenChunker(
+        new IngestionChunkerOptions(tokenizer)
+        {
+            MaxTokensPerChunk = MaxTokensPerChunk,
+            OverlapTokens = OverlapTokens
+        });
 
-var chunks = new List<DocumentChunk>();
+var chunks =
+    new List<DocumentChunk>();
 
-var chunkIndex = 0;
-
-await foreach (var chunk in chunker.ProcessAsync(document))
+foreach (var file in documentFiles)
 {
-    chunks.Add(new DocumentChunk
+    var documentName =
+        Path.GetFileName(file);
+
+    var document =
+        await reader.ReadAsync(
+            new FileInfo(file),
+            documentName);
+
+    var chunkIndex = 0;
+
+    await foreach (
+        var chunk in chunker.ProcessAsync(document))
     {
-        Id = CreateChunkId(
-            DocumentName,
-            chunkIndex),
+        chunks.Add(
+            new DocumentChunk
+            {
+                Id = CreateChunkId(
+                    documentName,
+                    chunkIndex),
 
-        DocumentName = DocumentName,
-        ChunkIndex = chunkIndex,
-        Text = chunk.Content
-    });
+                DocumentName =
+                    documentName,
 
-    chunkIndex++;
+                ChunkIndex =
+                    chunkIndex,
+
+                Text =
+                    chunk.Content
+            });
+
+        chunkIndex++;
+    }
 }
 
 //
-// Generate embeddings and store the chunks
+// Generate embeddings
 //
 
-var embeddings = await embeddingGenerator.GenerateAsync(
-    chunks.Select(chunk => chunk.Text));
+var embeddings =
+    await embeddingGenerator.GenerateAsync(
+        chunks.Select(
+            chunk => chunk.Text));
 
 for (var i = 0; i < chunks.Count; i++)
 {
-    chunks[i].Embedding = embeddings[i].Vector;
+    chunks[i].Embedding =
+        embeddings[i].Vector;
 }
 
-await vectorCollection.UpsertAsync(chunks);
+//
+// Store chunks in Qdrant
+//
+
+await vectorCollection.UpsertAsync(
+    chunks);
 
 Console.WriteLine(
-    $"Indexed {chunks.Count} document chunks.");
+    $"Indexed {chunks.Count} chunks " +
+    $"from {documentFiles.Length} documents.");
+
+//
+// Create the document search tool
+//
+
+var documentSearch =
+    new DocumentSearchService(
+        vectorCollection,
+        embeddingGenerator);
+
+var searchDocumentsTool =
+    AIFunctionFactory.Create(
+        documentSearch.SearchDocumentsAsync);
+
+//
+// Create the agent
+//
+
+AIAgent agent =
+    chatOllama.AsAIAgent(
+        name: "ProductApiAgent",
+
+        instructions:
+        """
+        You are an assistant for the Product API.
+
+        Use the available documentation tool when you need
+        Product API-specific information to answer the user's question.
+
+        Base Product API-specific answers on information returned
+        by the documentation tool.
+
+        If the documentation does not contain enough information,
+        say so clearly.
+
+        Do not invent Product API configuration values.
+        """,
+
+        tools:
+        [
+            searchDocumentsTool
+        ]);
+
+//
+// Interactive loop
+//
 
 Console.WriteLine();
-Console.WriteLine("Ask a question about the document.");
-Console.WriteLine("Type 'exit' to quit.");
-
-//
-// Query loop
-//
+Console.WriteLine("Product API Agent");
+Console.WriteLine(
+    "Ask a question or type 'exit' to quit.");
 
 while (true)
 {
-    Console.Write("\nYou: ");
+    Console.WriteLine();
+    Console.Write("You: ");
 
-    var question = Console.ReadLine();
+    var question =
+        Console.ReadLine();
 
     if (string.IsNullOrWhiteSpace(question))
     {
@@ -155,87 +243,29 @@ while (true)
         break;
     }
 
-    var questionEmbeddings =
-        await embeddingGenerator.GenerateAsync([question]);
-
-    var questionVector =
-        questionEmbeddings[0].Vector;
-
-    var context = new StringBuilder();
-    var matches = 0;
-
-    var results = vectorCollection.SearchAsync(
-        questionVector,
-        top: TopResults,
-        options: new VectorSearchOptions<DocumentChunk>
-        {
-            ScoreThreshold = MinimumScore
-        });
-
-    await foreach (var result in results)
-    {
-        context.AppendLine(result.Record.Text);
-        context.AppendLine();
-
-        matches++;
-    }
-
-    if (matches == 0)
-    {
-        Console.WriteLine();
-        Console.WriteLine(
-            "Assistant: The available documents do not contain enough information.");
-
-        continue;
-    }
-
-    var prompt = $"""
-        Answer the question using only the provided context.
-
-        If the context contains information related to the question,
-        answer directly using that information.
-
-        A partial answer is acceptable.
-        Do not refuse to answer just because the context does not provide
-        a complete explanation.
-
-        Only say "The available documents do not contain enough information."
-        if the context contains no information relevant to the question.
-
-        Do not use external knowledge and do not speculate.
-
-        Context:
-        {context}
-
-        Question:
-        {question}
-
-        Answer:
-        """;
-
-    var response = await chatClient.GetResponseAsync(
-        prompt,
-        new ChatOptions
-        {
-            Temperature = 0
-        });
+    var response =
+        await agent.RunAsync(question);
 
     Console.WriteLine();
     Console.WriteLine(
-        $"Assistant: {response.Text}");
+        $"Agent: {response}");
 }
 
 //
-// Builds a stable identifier so that re-running the application
-// overwrites the existing chunks instead of duplicating them.
+// Generates deterministic chunk IDs.
+//
+// Running the application again updates existing chunks
+// instead of inserting duplicates.
 //
 
 static Guid CreateChunkId(
     string documentName,
     int chunkIndex)
 {
-    var bytes = Encoding.UTF8.GetBytes(
-        $"{documentName}:{chunkIndex}");
+    var bytes =
+        Encoding.UTF8.GetBytes(
+            $"{documentName}:{chunkIndex}");
 
-    return new Guid(MD5.HashData(bytes));
+    return new Guid(
+        MD5.HashData(bytes));
 }

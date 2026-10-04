@@ -1,19 +1,23 @@
-# Local RAG Application in C# with Ollama and Qdrant
+# Local RAG and AI Agent in C# with Ollama and Qdrant
 
-A simple educational project that demonstrates how to build a fully local Retrieval-Augmented Generation (RAG) application using **C#**, **Ollama**, and **Qdrant**.
+A simple educational project that started as a fully local Retrieval-Augmented Generation (RAG) application and now evolves into a local AI Agent using **C#**, **Ollama**, **Qdrant**, and **Microsoft Agent Framework**.
 
-The application reads a local document through `Microsoft.Extensions.DataIngestion`, splits it into token-based chunks, generates embeddings, stores them in Qdrant, retrieves the most relevant context for a question, and sends that context to a local LLM running through Ollama.
+The current version keeps the existing document ingestion and vector search pipeline, but exposes document retrieval as an agent tool. Instead of always searching Qdrant before every model call, the model can decide when Product API documentation is needed.
 
 > **Disclaimer:** This project is purely for educational purposes. There are better ways to structure, secure, and optimize real-world applications. Use it as a starting point for learning and adapt it to your production requirements.
 
 ## Related Articles
 
-This repository accompanies my article series:
+### Local RAG Series
 
 - [Build a Local RAG Application in C# with Ollama and Qdrant - Part 1](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-1/)
 - [Build a Local RAG Application in C# with Ollama and Qdrant - Part 2](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-2/)
 - [Build a Local RAG Application in C# with Ollama and Qdrant - Part 3](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-3/)
 - [Build a Local RAG Application in C# with Ollama and Qdrant - Part 4](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-4/)
+
+### AI Agent Series
+
+- [From Local RAG to an AI Agent in C# with Ollama and Qdrant - Part 1](https://www.ottorinobruni.com/from-local-rag-to-ai-agent-csharp-ollama-qdrant-part-1/)
 
 You may also find this introductory article useful:
 
@@ -21,70 +25,80 @@ You may also find this introductory article useful:
 
 ## How It Works
 
-The complete flow is:
+The current version combines the existing RAG retrieval pipeline with an AI Agent.
 
-```mermaid
-flowchart LR
-    A[📄 Document] --> B[📥 IngestionDocument]
-    B --> C[✂️ Token-based Chunks]
-    C --> D[🔢 Embeddings]
-    D --> E[(🗄️ Qdrant)]
-    E --> F[🔍 Retrieval]
-    F --> G[📝 Prompt]
-    G --> H[🤖 LLM]
-    H --> I[💬 Answer]
+```text
+User Question
+     |
+     v
+AI Agent / Ollama
+     |
+     +---- No tool required ----> Answer
+     |
+     +---- SearchDocumentsAsync
+                |
+                v
+             Qdrant
+                |
+                v
+      Retrieved Documentation
+                |
+                v
+          AI Agent / Ollama
+                |
+                v
+              Answer
 ```
 
-### How it works
+The main difference from the previous RAG version is **who decides when retrieval happens**.
 
-1. **Document** — The source document is loaded through the ingestion layer.
-2. **IngestionDocument** — The reader converts the source into a normalized document representation.
-3. **Chunks** — `DocumentTokenChunker` splits the document into token-based chunks with overlap.
-4. **Embeddings** — Each chunk is converted into a numerical vector using an embedding model.
-5. **Qdrant** — The vectors and their associated text are stored in the Qdrant vector database.
-6. **Retrieval** — When the user asks a question, the most relevant chunks are retrieved using vector similarity.
-7. **Prompt** — The retrieved context is combined with the user's question.
-8. **LLM** — The final prompt is sent to the local language model.
-9. **Answer** — The model generates an answer based on the retrieved context.
+In the original RAG application, every question followed a predefined flow:
+
+```text
+Question → Retrieval → Prompt → Model → Answer
+```
+
+In the agent version, document search becomes an optional capability that the model can request when Product API-specific information is needed.
 
 The project uses:
 
-- **C# / .NET 10** to implement the RAG pipeline.
-- **Microsoft.Extensions.AI** to provide abstractions for chat and embedding generation.
-- **Microsoft.Extensions.VectorData** to provide abstractions for vector storage and vector search.
-- **Microsoft.Extensions.DataIngestion** to read and prepare documents for chunking.
-- **Microsoft.Extensions.DataIngestion.Markdig** to read the sample text document into an `IngestionDocument`.
-- **Microsoft.ML.Tokenizers** to support token-based chunking.
-- **OllamaSharp** to integrate Ollama with `Microsoft.Extensions.AI`.
+- **C# / .NET 10** for the application.
+- **Microsoft Agent Framework** to create the AI Agent and expose document search as a tool.
+- **Microsoft.Extensions.AI** for chat and embedding abstractions.
+- **Microsoft.Extensions.VectorData** for vector storage and vector search abstractions.
+- **Microsoft.Extensions.DataIngestion** to load and prepare documents.
+- **Microsoft.Extensions.DataIngestion.Markdig** to read Markdown documents into `IngestionDocument`.
+- **Microsoft.ML.Tokenizers** for token-based chunking.
+- **OllamaSharp** to integrate Ollama with the .NET AI abstractions.
 - **CommunityToolkit.VectorData.Qdrant** to integrate Qdrant with `Microsoft.Extensions.VectorData`.
-- **Ollama** to run the local AI models.
+- **Ollama** to run the local models.
 - **nomic-embed-text** to generate embeddings.
-- **llama3.2** to generate the final answer.
+- **llama3.2** as the local chat model.
 - **Qdrant** to store embeddings and perform vector similarity search.
 
 Everything can run locally on your machine.
 
-## What's New in Part 4
+## What's New in AI Agent - Part 1
 
-Part 4 improves the document ingestion stage while keeping the AI, vector-store, retrieval, and generation pipeline from Part 3 unchanged.
+This version evolves the previous local RAG application into the first version of a local AI Agent.
 
 The main changes are:
 
-- Added `Microsoft.Extensions.DataIngestion`.
-- Added `Microsoft.Extensions.DataIngestion.Markdig`.
-- Replaced `File.ReadAllTextAsync` with a document reader that produces an `IngestionDocument`.
-- Replaced the custom `SplitDocument` method with `DocumentTokenChunker`.
-- Replaced character-based chunking with token-based chunking.
-- Added configurable token overlap between consecutive chunks.
-- Added `Microsoft.ML.Tokenizers.Data.O200kBase` for the local tokenizer data used by `TiktokenTokenizer`.
-- Kept the existing `DocumentChunk` model and mapped ingestion chunks into it.
-- Kept `Microsoft.Extensions.AI`, `Microsoft.Extensions.VectorData`, Ollama, and Qdrant unchanged.
+- Added Microsoft Agent Framework.
+- Added `DocumentSearchService`.
+- Exposed vector search through `SearchDocumentsAsync`.
+- Replaced unconditional retrieval with agent-driven tool calling.
+- Added multiple Product API Markdown documents.
+- Added tool logging so that we can observe when document retrieval is requested.
+- Kept the existing Ollama, Qdrant, VectorData, DataIngestion, and embedding infrastructure.
 
-The overall RAG flow is still familiar, but document preparation is now handled by a dedicated ingestion layer:
+The retrieval pipeline itself still works in the same way:
 
 ```text
-Document → IngestionDocument → Token-based Chunks → Embeddings → Vector Store → Retrieval → Prompt → LLM → Answer
+Query → Embedding → Qdrant → Relevant Chunks
 ```
+
+What changes is how that pipeline is triggered.
 
 ## Prerequisites
 
@@ -111,7 +125,7 @@ Pull the embedding model:
 ollama pull nomic-embed-text
 ```
 
-Verify that the models are available:
+Verify that both models are available:
 
 ```bash
 ollama list
@@ -173,71 +187,144 @@ Restore the dependencies:
 dotnet restore
 ```
 
-The project uses the following main NuGet packages:
+The project already contains the libraries introduced in the previous RAG series. The new dependency introduced for the agent version is Microsoft Agent Framework.
 
 ```bash
-dotnet add package Microsoft.Extensions.AI
-dotnet add package Microsoft.Extensions.DataIngestion --version 10.10.0-preview.1.26459.2
-dotnet add package Microsoft.Extensions.DataIngestion.Markdig --version 10.10.0-preview.1.26459.2
-dotnet add package Microsoft.ML.Tokenizers.Data.O200kBase --version 2.0.0
-dotnet add package OllamaSharp
-dotnet add package CommunityToolkit.VectorData.Qdrant
-dotnet add package Qdrant.Client
+dotnet add package Microsoft.Agents.AI
 ```
-
-`Microsoft.Extensions.AI` provides common abstractions for chat and embedding generation.
-
-`Microsoft.Extensions.DataIngestion` provides abstractions for document reading and chunking.
-
-`Microsoft.Extensions.DataIngestion.Markdig` provides the reader used to convert `sample.txt` into an `IngestionDocument`.
-
-`Microsoft.ML.Tokenizers.Data.O200kBase` provides the tokenizer data required by `TiktokenTokenizer.CreateForModel("gpt-4o")`. The tokenizer is used locally only to count tokens and determine chunk boundaries; the application still uses `nomic-embed-text` for embeddings and `llama3.2` for generation.
-
-Ollama is integrated through `OllamaSharp`, while Qdrant is integrated through `CommunityToolkit.VectorData.Qdrant`.
 
 ## Project Structure
 
-The current version of the project keeps a small structure while using `Microsoft.Extensions.DataIngestion`, `Microsoft.Extensions.AI`, and `Microsoft.Extensions.VectorData` for the main RAG building blocks.
+The current version uses multiple Product API documents and keeps the document search logic separate from the agent configuration.
 
 ```text
 LocalRagDemo
 ├── Documents
-│   └── sample.txt
+│   ├── authentication.md
+│   ├── deployment.md
+│   ├── observability.md
+│   └── troubleshooting.md
 ├── Models
 │   └── DocumentChunk.cs
+├── Services
+│   └── DocumentSearchService.cs
 ├── Program.cs
 └── LocalRagDemo.csproj
 ```
 
-The custom Ollama response models, `OllamaService`, `SearchResult`, and the custom `QdrantVectorStore` used in Part 2 are no longer needed.
+## 4. Product API Documents
 
-## 4. Add a Document
+The demo uses a small fictional Product API knowledge base split across several Markdown files:
 
-Add a text file to:
+- `authentication.md` — JWT authentication and related configuration.
+- `deployment.md` — Kubernetes deployment and configuration changes.
+- `observability.md` — logs, diagnostics, and health checks.
+- `troubleshooting.md` — common HTTP 401 problems and diagnostic steps.
 
-```text
-Documents/sample.txt
-```
+The files must be copied to the application output directory because the application loads them from `AppContext.BaseDirectory`.
 
-You can replace the sample content with any text you want to query.
-
-The project currently focuses on a simple `sample.txt` file. It is read through the Markdown reader from `Microsoft.Extensions.DataIngestion.Markdig`, which gives the application an `IngestionDocument` without requiring a custom reader. PDF, Word, OCR, and more advanced document parsing are intentionally outside the scope of this demo.
-
-The project file should copy the `Documents` directory to the output folder:
+The project file contains:
 
 ```xml
 <ItemGroup>
-  <Content Include="Documents/**/*">
+  <None Update="Documents\*.md">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-  </Content>
+  </None>
 </ItemGroup>
 ```
 
-The application can then resolve the document path using `AppContext.BaseDirectory`.
+This ensures that all Markdown documents are available at runtime.
 
-## 5. Run the Application
+## 5. Document Ingestion
 
-Make sure Ollama and Qdrant are already running, then execute:
+The ingestion pipeline is the same one introduced in Part 4 of the RAG series:
+
+```text
+Documents → IngestionDocument → Token-based Chunks → Embeddings → Qdrant
+```
+
+For each Markdown file, the application:
+
+1. Loads the document using `MarkdownReader`.
+2. Converts it into an `IngestionDocument`.
+3. Splits it into token-based chunks using `DocumentTokenChunker`.
+4. Generates embeddings using `nomic-embed-text`.
+5. Stores the chunks and vectors in Qdrant.
+
+Chunk IDs are generated deterministically from the document name and chunk index, so running the application again updates existing chunks instead of inserting duplicates.
+
+For simplicity, this demo does not remove obsolete chunks if a document becomes shorter.
+
+## 6. Document Search as an Agent Tool
+
+`DocumentSearchService` contains the vector search logic.
+
+The service receives:
+
+- the Qdrant vector collection;
+- the embedding generator.
+
+Its `SearchDocumentsAsync` method:
+
+1. receives a natural-language query;
+2. generates its embedding;
+3. searches Qdrant;
+4. returns the most relevant Product API document chunks.
+
+The method is exposed to the agent through:
+
+```csharp
+var searchDocumentsTool =
+    AIFunctionFactory.Create(
+        documentSearch.SearchDocumentsAsync);
+```
+
+Every tool invocation is logged:
+
+```text
+[Tool] SearchDocuments: ...
+```
+
+This makes it easy to observe when the model decides that document retrieval is required.
+
+## 7. Create the Agent
+
+The agent is created from the existing Ollama chat client:
+
+```csharp
+AIAgent agent =
+    chatOllama.AsAIAgent(
+        name: "ProductApiAgent",
+
+        instructions:
+        """
+        You are an assistant for the Product API.
+
+        Use the available documentation tool when you need
+        Product API-specific information to answer the user's question.
+
+        Base Product API-specific answers on information returned
+        by the documentation tool.
+
+        If the documentation does not contain enough information,
+        say so clearly.
+
+        Do not invent Product API configuration values.
+        """,
+
+        tools:
+        [
+            searchDocumentsTool
+        ]);
+```
+
+The model does not access Qdrant directly. It only knows that a documentation search capability is available and can decide when to request it.
+
+Each `RunAsync` call is independent in this first version. Conversation state and memory are intentionally outside the scope of Part 1.
+
+## 8. Run the Application
+
+Make sure Ollama and Qdrant are running, then execute:
 
 ```bash
 dotnet run
@@ -245,49 +332,66 @@ dotnet run
 
 The application will:
 
-1. Read the local document into an `IngestionDocument`.
-2. Split it into token-based chunks with `DocumentTokenChunker`.
-3. Map the ingestion chunks into the existing `DocumentChunk` model.
-4. Generate embeddings for each chunk using `nomic-embed-text` through `IEmbeddingGenerator`.
-5. Store the chunks and vectors in Qdrant through `Microsoft.Extensions.VectorData`.
-6. Wait for a user question.
-7. Generate an embedding for the question.
-8. Retrieve the most relevant chunks using VectorData.
-9. Build a prompt containing the retrieved context.
-10. Ask `llama3.2` through `IChatClient` to answer using that context.
+1. Read the Product API Markdown documents.
+2. Split them into token-based chunks.
+3. Generate embeddings using `nomic-embed-text`.
+4. Store the chunks in Qdrant.
+5. Create `DocumentSearchService`.
+6. Expose `SearchDocumentsAsync` as an agent tool.
+7. Create the `ProductApiAgent`.
+8. Wait for a user question.
+9. Let the model decide whether document retrieval is needed.
+10. Execute the tool when requested and return the final answer.
 
 You should see output similar to:
 
 ```text
-Indexed 1 document chunks.
+Indexed 4 chunks from 4 documents.
 
-Ask a question about the document.
-Type 'exit' to quit.
+Product API Agent
+Ask a question or type 'exit' to quit.
 
 You:
 ```
 
+The exact number of chunks may vary depending on the document content and chunking configuration.
+
 ## Example Questions
 
-Try questions such as:
+### General question
 
 ```text
-How does authentication work?
+What is the difference between HTTP GET and POST?
 ```
+
+This does not require Product API-specific information. The model may answer without calling the documentation tool.
+
+### Product API-specific question
 
 ```text
-How is the application deployed?
+Which environment variable configures the JWT authority for the Product API?
 ```
 
-And also test a question whose answer does not exist in the document:
+Here the answer exists only in the demo documentation, so the agent can use the document search tool.
+
+You may see output similar to:
 
 ```text
-Which database does the application use?
+[Tool] SearchDocuments: Product API JWT authority environment variable
 ```
 
-The prompt instructs the local LLM to answer using only the retrieved context and avoid inventing information that is not present in the document.
+The exact generated query may vary between runs.
 
-The application also uses a minimum similarity score to avoid passing weakly related chunks to the language model.
+### More complex question
+
+```text
+After deploying the Product API to Kubernetes, some requests return HTTP 401.
+Which configuration should I check, and what diagnostic information is available?
+```
+
+This question can require information from authentication, deployment, troubleshooting, and observability documents.
+
+The important difference from the previous RAG application is that retrieval is no longer executed unconditionally. The model can decide whether the documentation tool is needed.
 
 ## Configuration
 
@@ -295,15 +399,22 @@ The default configuration used by the sample application is:
 
 ```csharp
 const string OllamaUrl = "http://localhost:11434";
+
 const string ChatModel = "llama3.2";
 const string EmbeddingModel = "nomic-embed-text";
 
 const string QdrantHost = "localhost";
 const int QdrantPort = 6334;
-const string CollectionName = "local-rag";
+
+const string CollectionName = "local-rag-agent";
 
 const int MaxTokensPerChunk = 200;
 const int OverlapTokens = 30;
+```
+
+`DocumentSearchService` also uses:
+
+```csharp
 const int TopResults = 3;
 const double MinimumScore = 0.5;
 ```
@@ -318,15 +429,17 @@ Each article corresponds to a tagged version of the repository:
 - `part-2` — Manual RAG implementation with Ollama and Qdrant.
 - `part-3` — RAG implementation using `Microsoft.Extensions.AI` and `Microsoft.Extensions.VectorData`.
 - `part-4` — Document ingestion using `Microsoft.Extensions.DataIngestion` and token-based chunking.
+- `agent-part-1` — Local AI Agent using Microsoft Agent Framework and document search as a tool.
 
-You can check out a specific version using:
+You can check out the agent version using:
 
 ```bash
-git checkout part-4
+git checkout agent-part-1
 ```
 
 ## Resources
 
+- [Microsoft Agent Framework](https://learn.microsoft.com/agent-framework/)
 - [Microsoft.Extensions.AI](https://learn.microsoft.com/dotnet/ai/microsoft-extensions-ai)
 - [Microsoft.Extensions.VectorData](https://learn.microsoft.com/dotnet/ai/vector-data)
 - [Microsoft.Extensions.DataIngestion](https://learn.microsoft.com/dotnet/ai/conceptual/data-ingestion)
