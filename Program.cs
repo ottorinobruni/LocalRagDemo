@@ -173,7 +173,7 @@ Console.WriteLine(
     $"from {documentFiles.Length} documents.");
 
 //
-// Create the document search tool
+// Create the agent tools (Part 2)
 //
 
 var documentSearch =
@@ -181,12 +181,26 @@ var documentSearch =
         vectorCollection,
         embeddingGenerator);
 
+var deploymentService =
+    new DeploymentService();
+
+var applicationLogsService =
+    new ApplicationLogsService();
+
 var searchDocumentsTool =
     AIFunctionFactory.Create(
         documentSearch.SearchDocumentsAsync);
 
+var deploymentStatusTool =
+    AIFunctionFactory.Create(
+        deploymentService.GetDeploymentStatus);
+
+var recentErrorsTool =
+    AIFunctionFactory.Create(
+        applicationLogsService.GetRecentErrors);
+
 //
-// Create the agent
+// Create the agent with multiple tools (Part 2)
 //
 
 AIAgent agent =
@@ -197,22 +211,43 @@ AIAgent agent =
         """
         You are an assistant for the Product API.
 
-        Use the available documentation tool when you need
-        Product API-specific information to answer the user's question.
+        You have tools for documentation search,
+        deployment status and application errors.
 
-        Base Product API-specific answers on information returned
-        by the documentation tool.
+        When investigating a Product API failure:
+        1. Call GetDeploymentStatus.
+        2. Call GetRecentErrors.
+        3. Call SearchDocumentsAsync for relevant documentation.
+        4. Combine the actual results into your answer.
 
-        If the documentation does not contain enough information,
-        say so clearly.
+        Do not stop after using only one tool
+        when investigating a failure.
 
-        Do not invent Product API configuration values.
+        Never claim that a tool was executed unless
+        its result is available in the conversation.
+
+        Do not invent application status,
+        errors or configuration values.
+
+        If a tool was not executed, clearly state
+        that the corresponding information was not verified.
+
+        For general questions, use only the tools needed.
         """,
 
         tools:
         [
-            searchDocumentsTool
+            searchDocumentsTool,
+            deploymentStatusTool,
+            recentErrorsTool
         ]);
+
+//
+// Reuse one session across all questions (Part 2)
+//
+
+// Create a session for the conversation
+AgentSession session = await agent.CreateSessionAsync();
 
 //
 // Interactive loop
@@ -220,40 +255,33 @@ AIAgent agent =
 
 Console.WriteLine();
 Console.WriteLine("Product API Agent");
-Console.WriteLine(
-    "Ask a question or type 'exit' to quit.");
+Console.WriteLine("Ask a question or type 'exit' to quit.");
 
 while (true)
 {
     Console.WriteLine();
     Console.Write("You: ");
 
-    var question =
-        Console.ReadLine();
+    var question = Console.ReadLine();
 
     if (string.IsNullOrWhiteSpace(question))
     {
         continue;
     }
 
-    if (question.Equals(
-        "exit",
-        StringComparison.OrdinalIgnoreCase))
+    if (question.Equals("exit", StringComparison.OrdinalIgnoreCase))
     {
         break;
     }
 
-    var response =
-        await agent.RunAsync(question);
+    var response = await agent.RunAsync(question, session);
 
     Console.WriteLine();
-    Console.WriteLine(
-        $"Agent: {response}");
+    Console.WriteLine($"Agent: {response}");
 }
 
 //
 // Generates deterministic chunk IDs.
-//
 // Running the application again updates existing chunks
 // instead of inserting duplicates.
 //
@@ -262,10 +290,7 @@ static Guid CreateChunkId(
     string documentName,
     int chunkIndex)
 {
-    var bytes =
-        Encoding.UTF8.GetBytes(
-            $"{documentName}:{chunkIndex}");
+    var bytes = Encoding.UTF8.GetBytes($"{documentName}:{chunkIndex}");
 
-    return new Guid(
-        MD5.HashData(bytes));
+    return new Guid(MD5.HashData(bytes));
 }
