@@ -1,229 +1,193 @@
 # Local RAG and AI Agent in C# with Ollama and Qdrant
 
-A simple educational project that started as a fully local Retrieval-Augmented Generation (RAG) application and now evolves into a local AI Agent using **C#**, **Ollama**, **Qdrant**, and **Microsoft Agent Framework**.
+A hands-on educational project that starts with a fully local **Retrieval-Augmented Generation (RAG)** application and evolves into a **tool-enabled AI agent** built with **C# / .NET 10**, **Microsoft Agent Framework**, **Ollama**, and **Qdrant**.
 
-The current version keeps the existing document ingestion and vector search pipeline, but exposes document retrieval as an agent tool. Instead of always searching Qdrant before every model call, the model can decide when Product API documentation is needed.
+The latest tutorial, **AI Agent – Part 2**, adds multiple tools and conversation state. The agent can search Product API documentation, inspect simulated deployment information, retrieve simulated application errors, and handle follow-up questions within a single session.
 
-> **Disclaimer:** This project is purely for educational purposes. There are better ways to structure, secure, and optimize real-world applications. Use it as a starting point for learning and adapt it to your production requirements.
+> **Disclaimer:** This project is for educational purposes. The Product API, deployment status, and application logs are fictional. The deployment and logging tools return hard-coded sample data; they do **not** connect to a live Kubernetes cluster or monitoring service. Additional validation, security, testing, and observability would be required for production use.
 
 ## Related Articles
 
 ### Local RAG Series
 
-- [Build a Local RAG Application in C# with Ollama and Qdrant - Part 1](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-1/)
-- [Build a Local RAG Application in C# with Ollama and Qdrant - Part 2](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-2/)
-- [Build a Local RAG Application in C# with Ollama and Qdrant - Part 3](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-3/)
-- [Build a Local RAG Application in C# with Ollama and Qdrant - Part 4](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-4/)
+1. [Build a Local RAG Application in C# with Ollama and Qdrant – Part 1](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-1/)
+2. [Build a Local RAG Application in C# with Ollama and Qdrant – Part 2](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-2/)
+3. [Build a Local RAG Application in C# with Ollama and Qdrant – Part 3](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-3/)
+4. [Build a Local RAG Application in C# with Ollama and Qdrant – Part 4](https://www.ottorinobruni.com/build-local-rag-application-csharp-ollama-qdrant-part-4/)
 
 ### AI Agent Series
 
-- [From Local RAG to an AI Agent in C# with Ollama and Qdrant - Part 1](https://www.ottorinobruni.com/from-local-rag-to-ai-agent-csharp-ollama-qdrant-part-1/)
+1. [From Local RAG to an AI Agent in C# with Ollama and Qdrant – Part 1](https://www.ottorinobruni.com/from-local-rag-to-ai-agent-csharp-ollama-qdrant-part-1/) – Turn document retrieval into an agent tool.
+2. [From Local RAG to an AI Agent in C# with Ollama and Qdrant – Part 2](https://www.ottorinobruni.com/from-local-rag-to-ai-agent-csharp-ollama-qdrant-part-2/) – Add multiple tools and conversation state.
 
-You may also find this introductory article useful:
-
-- [AI Basics for Developers: Tokens, Inference, Embeddings, Vector Databases and RAG Explained](https://www.ottorinobruni.com/ai-basics-for-developers-tokens-inference-embeddings-vector-databases-rag-explained/)
+Additional reading: [AI Basics for Developers: Tokens, Inference, Embeddings, Vector Databases and RAG Explained](https://www.ottorinobruni.com/ai-basics-for-developers-tokens-inference-embeddings-vector-databases-rag-explained/).
 
 ## How It Works
 
-The current version combines the existing RAG retrieval pipeline with an AI Agent.
-
-```text
-User Question
-     |
-     v
-AI Agent / Ollama
-     |
-     +---- No tool required ----> Answer
-     |
-     +---- SearchDocumentsAsync
-                |
-                v
-             Qdrant
-                |
-                v
-      Retrieved Documentation
-                |
-                v
-          AI Agent / Ollama
-                |
-                v
-              Answer
-```
-
-The main difference from the previous RAG version is **who decides when retrieval happens**.
-
-In the original RAG application, every question followed a predefined flow:
+The original RAG application always searched the document store before generating an answer:
 
 ```text
 Question → Retrieval → Prompt → Model → Answer
 ```
 
-In the agent version, document search becomes an optional capability that the model can request when Product API-specific information is needed.
-
-The project uses:
-
-- **C# / .NET 10** for the application.
-- **Microsoft Agent Framework** to create the AI Agent and expose document search as a tool.
-- **Microsoft.Extensions.AI** for chat and embedding abstractions.
-- **Microsoft.Extensions.VectorData** for vector storage and vector search abstractions.
-- **Microsoft.Extensions.DataIngestion** to load and prepare documents.
-- **Microsoft.Extensions.DataIngestion.Markdig** to read Markdown documents into `IngestionDocument`.
-- **Microsoft.ML.Tokenizers** for token-based chunking.
-- **OllamaSharp** to integrate Ollama with the .NET AI abstractions.
-- **CommunityToolkit.VectorData.Qdrant** to integrate Qdrant with `Microsoft.Extensions.VectorData`.
-- **Ollama** to run the local models.
-- **nomic-embed-text** to generate embeddings.
-- **llama3.2** as the local chat model.
-- **Qdrant** to store embeddings and perform vector similarity search.
-
-Everything can run locally on your machine.
-
-## What's New in AI Agent - Part 1
-
-This version evolves the previous local RAG application into the first version of a local AI Agent.
-
-The main changes are:
-
-- Added Microsoft Agent Framework.
-- Added `DocumentSearchService`.
-- Exposed vector search through `SearchDocumentsAsync`.
-- Replaced unconditional retrieval with agent-driven tool calling.
-- Added multiple Product API Markdown documents.
-- Added tool logging so that we can observe when document retrieval is requested.
-- Kept the existing Ollama, Qdrant, VectorData, DataIngestion, and embedding infrastructure.
-
-The retrieval pipeline itself still works in the same way:
+In **AI Agent – Part 1**, retrieval became an optional tool requested by the model. In **Part 2**, the agent has three tools, and conversation state preserves context between questions:
 
 ```text
-Query → Embedding → Qdrant → Relevant Chunks
+                User Question / Follow-up
+                           |
+                           v
+                     AgentSession
+                           |
+                           v
+                  AI Agent + Ollama
+                           |
+           +---------------+---------------+
+           |               |               |
+           v               v               v
+ SearchDocumentsAsync  GetDeploymentStatus  GetRecentErrors
+           |               |               |
+           v               v               v
+        Qdrant       Simulated deployment  Simulated logs
+           |               |               |
+           +---------------+---------------+
+                           |
+                           v
+                  AI Agent + Ollama
+                           |
+                           v
+                   Contextual Answer
 ```
 
-What changes is how that pipeline is triggered.
+The model can also answer without invoking a tool when one is not needed. The diagram shows **available capabilities**, not a mandatory execution order: the model might call none, one, or multiple tools.
+
+The document ingestion and retrieval pipeline remains unchanged:
+
+```text
+Markdown Documents
+        |
+        v
+ IngestionDocument
+        |
+        v
+ Token-based Chunks
+        |
+        v
+ Embeddings (nomic-embed-text)
+        |
+        v
+       Qdrant
+        |
+        v
+ SearchDocumentsAsync (when requested by the agent)
+```
+
+## Technology Stack
+
+| Component | Purpose |
+| --- | --- |
+| C# / .NET 10 | Console application |
+| Microsoft Agent Framework (`Microsoft.Agents.AI`) | Agent, tool orchestration, and `AgentSession` |
+| `Microsoft.Extensions.AI` | AI abstractions, embedding generation, and function tools |
+| `Microsoft.Extensions.VectorData` | Vector-store abstractions |
+| `Microsoft.Extensions.DataIngestion` | Document ingestion and chunking |
+| `Microsoft.Extensions.DataIngestion.Markdig` | Markdown document reader |
+| `Microsoft.ML.Tokenizers` | Token-based chunking |
+| `OllamaSharp` | Integration with local Ollama models |
+| Ollama / `llama3.2` | Local language model and tool selection |
+| Ollama / `nomic-embed-text` | Local embeddings |
+| `CommunityToolkit.VectorData.Qdrant` | VectorData integration for Qdrant |
+| `Qdrant.Client` / Qdrant | Vector search and storage |
+
+Everything in this example can run locally. **Part 2 does not require additional NuGet libraries beyond those already used in Agent Part 1.**
+
+## What's New in AI Agent – Part 2
+
+- **Three agent tools**, rather than one:
+  - `SearchDocumentsAsync` searches the Product API documentation in Qdrant.
+  - `GetDeploymentStatus` returns a simulated Kubernetes deployment status.
+  - `GetRecentErrors` returns simulated Product API authentication errors.
+- **Agent-driven tool selection:** `AIFunctionFactory.Create(...)` exposes existing C# methods as callable tools.
+- **Conversation state:** an `AgentSession` is reused across requests, enabling follow-up questions.
+- **Improved troubleshooting instructions:** the agent is asked to check deployment status, errors, and documentation when investigating failures.
+- **Realistic limitations:** tool availability does not guarantee that a small local model will invoke every relevant tool or ground every conclusion in tool results.
+
+The existing document ingestion, embeddings, and Qdrant retrieval code remains in place.
 
 ## Prerequisites
 
-Before running the project, install:
+Install the following before running the application:
 
-- [.NET SDK](https://dotnet.microsoft.com/download)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Ollama](https://ollama.com/)
-- [Docker](https://www.docker.com/)
-- [Qdrant](https://qdrant.tech/)
-- [Visual Studio Code](https://code.visualstudio.com/) or another C# IDE
-- [C# Dev Kit for VS Code](https://marketplace.visualstudio.com/items?itemName=ms-dotnettools.csdevkit) if you use VS Code
+- [Docker](https://www.docker.com/) (for Qdrant)
+- [Visual Studio Code](https://code.visualstudio.com/), Visual Studio, or another C# IDE
+- Optional for VS Code: [C# Dev Kit](https://marketplace.visualstudio.com/items?itemName=ms-dotnettools.csdevkit)
 
-## 1. Install the Ollama Models
-
-Pull the local language model:
+### 1. Install the Ollama Models
 
 ```bash
 ollama pull llama3.2
-```
-
-Pull the embedding model:
-
-```bash
 ollama pull nomic-embed-text
-```
-
-Verify that both models are available:
-
-```bash
 ollama list
 ```
 
-Ollama normally exposes its local API at:
+The default Ollama endpoint is `http://localhost:11434`. Make sure Ollama is running before starting the application.
 
-```text
-http://localhost:11434
-```
-
-## 2. Run Qdrant
-
-Download the latest Qdrant Docker image:
+### 2. Run Qdrant
 
 ```bash
 docker pull qdrant/qdrant
-```
 
-Run Qdrant:
-
-```bash
 docker run -p 6333:6333 -p 6334:6334 \
-    -v "$(pwd)/qdrant_storage:/qdrant/storage:z" \
-    qdrant/qdrant
+  -v "$(pwd)/qdrant_storage:/qdrant/storage:z" \
+  qdrant/qdrant
 ```
 
-The ports used are:
+- `6333`: Qdrant HTTP API and dashboard (`http://localhost:6333/dashboard`).
+- `6334`: Qdrant gRPC port used by this .NET project.
 
-- `6333` — Qdrant HTTP/REST API and web interface.
-- `6334` — Qdrant gRPC API used by the .NET client.
+The mounted `qdrant_storage` directory preserves data between container restarts. You can verify the container is running with `docker ps`.
 
-You can verify that Qdrant is running with:
+### 3. Clone and Run
 
 ```bash
-docker ps
-```
-
-Or open:
-
-```text
-http://localhost:6333
-```
-
-The `qdrant_storage` directory keeps the vector database data persistent when the container is stopped or recreated.
-
-## 3. Clone and Restore the Project
-
-Clone the repository:
-
-```bash
-git clone https://github.com/ottorinobruni/LocalRagDemo
+git clone https://github.com/ottorinobruni/LocalRagDemo.git
 cd LocalRagDemo
-```
-
-Restore the dependencies:
-
-```bash
 dotnet restore
+dotnet run
 ```
 
-The project already contains the libraries introduced in the previous RAG series. The new dependency introduced for the agent version is Microsoft Agent Framework.
-
-```bash
-dotnet add package Microsoft.Agents.AI
-```
+The project's `.csproj` already declares its NuGet dependencies, including `Microsoft.Agents.AI`; there is no need to add the same package again after cloning.
 
 ## Project Structure
 
-The current version uses multiple Product API documents and keeps the document search logic separate from the agent configuration.
-
 ```text
-LocalRagDemo
-├── Documents
+LocalRagDemo/
+├── Documents/
 │   ├── authentication.md
 │   ├── deployment.md
 │   ├── observability.md
 │   └── troubleshooting.md
-├── Models
+├── Models/
 │   └── DocumentChunk.cs
-├── Services
-│   └── DocumentSearchService.cs
+├── Services/
+│   ├── DocumentSearchService.cs
+│   ├── DeploymentService.cs
+│   └── ApplicationLogsService.cs
 ├── Program.cs
 └── LocalRagDemo.csproj
 ```
 
-## 4. Product API Documents
+### Product API Documentation
 
-The demo uses a small fictional Product API knowledge base split across several Markdown files:
+The fictional Product API knowledge base contains four Markdown documents:
 
-- `authentication.md` — JWT authentication and related configuration.
-- `deployment.md` — Kubernetes deployment and configuration changes.
-- `observability.md` — logs, diagnostics, and health checks.
-- `troubleshooting.md` — common HTTP 401 problems and diagnostic steps.
+- `authentication.md`: JWT configuration and validation.
+- `deployment.md`: Kubernetes deployment configuration and rollout behavior.
+- `observability.md`: health checks, diagnostics, and logging.
+- `troubleshooting.md`: common HTTP 401 problems and investigation steps.
 
-The files must be copied to the application output directory because the application loads them from `AppContext.BaseDirectory`.
-
-The project file contains:
+The application reads Markdown files from its output directory. The project includes:
 
 ```xml
 <ItemGroup>
@@ -233,173 +197,255 @@ The project file contains:
 </ItemGroup>
 ```
 
-This ensures that all Markdown documents are available at runtime.
+### Document Ingestion
 
-## 5. Document Ingestion
+The ingestion flow, introduced in Local RAG Part 4, is reused without agent-specific changes:
 
-The ingestion pipeline is the same one introduced in Part 4 of the RAG series:
+1. Read Markdown files with `MarkdownReader`.
+2. Create `IngestionDocument` instances.
+3. Split each document with `DocumentTokenChunker`.
+4. Generate embeddings with `nomic-embed-text`.
+5. Store chunks and vectors in Qdrant.
 
-```text
-Documents → IngestionDocument → Token-based Chunks → Embeddings → Qdrant
-```
+Chunk IDs are based on the document name and chunk index. Rerunning the demo updates those IDs rather than inserting duplicate records. For simplicity, this implementation does not delete obsolete chunks when a document becomes shorter.
 
-For each Markdown file, the application:
+## Agent Tools
 
-1. Loads the document using `MarkdownReader`.
-2. Converts it into an `IngestionDocument`.
-3. Splits it into token-based chunks using `DocumentTokenChunker`.
-4. Generates embeddings using `nomic-embed-text`.
-5. Stores the chunks and vectors in Qdrant.
+### 1. Document Search
 
-Chunk IDs are generated deterministically from the document name and chunk index, so running the application again updates existing chunks instead of inserting duplicates.
-
-For simplicity, this demo does not remove obsolete chunks if a document becomes shorter.
-
-## 6. Document Search as an Agent Tool
-
-`DocumentSearchService` contains the vector search logic.
-
-The service receives:
-
-- the Qdrant vector collection;
-- the embedding generator.
-
-Its `SearchDocumentsAsync` method:
-
-1. receives a natural-language query;
-2. generates its embedding;
-3. searches Qdrant;
-4. returns the most relevant Product API document chunks.
-
-The method is exposed to the agent through:
+`DocumentSearchService` reuses the existing embedding generator and vector collection. Its `SearchDocumentsAsync(string query)` method embeds a query, searches Qdrant, and returns relevant document chunks with their source document names.
 
 ```csharp
-var searchDocumentsTool =
-    AIFunctionFactory.Create(
-        documentSearch.SearchDocumentsAsync);
+var documentSearch = new DocumentSearchService(
+    vectorCollection,
+    embeddingGenerator);
+
+var searchDocumentsTool = AIFunctionFactory.Create(
+    documentSearch.SearchDocumentsAsync);
 ```
 
-Every tool invocation is logged:
+When invoked, it logs a message similar to:
 
 ```text
-[Tool] SearchDocuments: ...
+[Tool] SearchDocuments: HTTP 401 troubleshooting
 ```
 
-This makes it easy to observe when the model decides that document retrieval is required.
+### 2. Deployment Status
 
-## 7. Create the Agent
+`DeploymentService.GetDeploymentStatus()` returns **simulated** deployment data such as:
 
-The agent is created from the existing Ollama chat client:
+```text
+Environment: Production
+Version: 2.1.0
+Platform: Kubernetes
+Status: Running
+Replicas: 3/3
+Last Deployment: 2026-10-15 10:30 UTC
+```
+
+It logs `[Tool] GetDeploymentStatus` when called. The sample does not contact Kubernetes.
+
+### 3. Recent Application Errors
+
+`ApplicationLogsService.GetRecentErrors()` returns **simulated** diagnostic messages:
+
+```text
+[10:42:15] HTTP 401 Unauthorized
+JWT validation failed: Invalid issuer.
+
+[10:43:02] HTTP 401 Unauthorized
+Token issuer does not match configured authority.
+
+[10:44:18] HTTP 401 Unauthorized
+Authentication failed for /api/products.
+```
+
+It logs `[Tool] GetRecentErrors` when called. The sample does not query live logs.
+
+### Register the Tools
+
+The services are ordinary C# classes. We expose their methods using `AIFunctionFactory`:
+
+```csharp
+var documentSearch = new DocumentSearchService(
+    vectorCollection,
+    embeddingGenerator);
+
+var deploymentService = new DeploymentService();
+var applicationLogsService = new ApplicationLogsService();
+
+var searchDocumentsTool = AIFunctionFactory.Create(
+    documentSearch.SearchDocumentsAsync);
+
+var deploymentStatusTool = AIFunctionFactory.Create(
+    deploymentService.GetDeploymentStatus);
+
+var recentErrorsTool = AIFunctionFactory.Create(
+    applicationLogsService.GetRecentErrors);
+```
+
+The `[Description]` attributes on the tool methods help the model understand their purpose. Tools are selected by the model; their implementations run in the C# application.
+
+## Create the Agent with Multiple Tools
+
+The agent reuses the Ollama chat client and exposes all three tools:
 
 ```csharp
 AIAgent agent =
     chatOllama.AsAIAgent(
         name: "ProductApiAgent",
-
         instructions:
         """
         You are an assistant for the Product API.
 
-        Use the available documentation tool when you need
-        Product API-specific information to answer the user's question.
+        You have tools for documentation search,
+        deployment status and application errors.
 
-        Base Product API-specific answers on information returned
-        by the documentation tool.
+        When investigating a Product API failure:
+        1. Call GetDeploymentStatus.
+        2. Call GetRecentErrors.
+        3. Call SearchDocumentsAsync for relevant documentation.
+        4. Combine the actual results into your answer.
 
-        If the documentation does not contain enough information,
-        say so clearly.
+        Do not stop after using only one tool
+        when investigating a failure.
 
-        Do not invent Product API configuration values.
+        Never claim that a tool was executed unless
+        its result is available in the conversation.
+
+        Do not invent application status,
+        errors or configuration values.
+
+        If a tool was not executed, clearly state
+        that the corresponding information was not verified.
+
+        For general questions, use only the tools needed.
         """,
-
         tools:
         [
-            searchDocumentsTool
+            searchDocumentsTool,
+            deploymentStatusTool,
+            recentErrorsTool
         ]);
 ```
 
-The model does not access Qdrant directly. It only knows that a documentation search capability is available and can decide when to request it.
+These instructions *encourage* the agent to investigate failures with multiple tools. They do **not** enforce a deterministic sequence, and the model may call fewer tools than requested.
 
-Each `RunAsync` call is independent in this first version. Conversation state and memory are intentionally outside the scope of Part 1.
+## Conversation State with `AgentSession`
 
-## 8. Run the Application
+In Agent Part 1, every question was independent. Part 2 uses a single session across the interactive console loop:
 
-Make sure Ollama and Qdrant are running, then execute:
+```csharp
+AgentSession session = await agent.CreateSessionAsync();
+
+Console.WriteLine("Product API Agent");
+Console.WriteLine("Ask a question or type 'exit' to quit.");
+
+while (true)
+{
+    Console.WriteLine();
+    Console.Write("You: ");
+
+    var question = Console.ReadLine();
+
+    if (string.IsNullOrWhiteSpace(question))
+    {
+        continue;
+    }
+
+    if (question.Equals("exit", StringComparison.OrdinalIgnoreCase))
+    {
+        break;
+    }
+
+    var response = await agent.RunAsync(question, session);
+
+    Console.WriteLine();
+    Console.WriteLine($"Agent: {response}");
+}
+```
+
+**Create the session outside the loop.** Reusing it lets the agent interpret questions such as “What should I check next?” in the context of previous exchanges.
+
+The sample session lives only in memory. Exiting the application and launching it again starts a new conversation. Session persistence is not implemented in this demo.
+
+## Run the Demo
+
+With Ollama and Qdrant running, execute:
 
 ```bash
 dotnet run
 ```
 
-The application will:
+At startup, the application ingests the Markdown documents, generates embeddings, upserts the chunks in Qdrant, creates the three tools and the agent, and starts the interactive prompt.
 
-1. Read the Product API Markdown documents.
-2. Split them into token-based chunks.
-3. Generate embeddings using `nomic-embed-text`.
-4. Store the chunks in Qdrant.
-5. Create `DocumentSearchService`.
-6. Expose `SearchDocumentsAsync` as an agent tool.
-7. Create the `ProductApiAgent`.
-8. Wait for a user question.
-9. Let the model decide whether document retrieval is needed.
-10. Execute the tool when requested and return the final answer.
+### Test Individual Tools
 
-You should see output similar to:
+Try these questions to understand tool selection:
 
 ```text
-Indexed 4 chunks from 4 documents.
+What is the current deployment status of the Product API?
 
-Product API Agent
-Ask a question or type 'exit' to quit.
+Show me the most recent Product API application errors.
 
-You:
+According to the Product API documentation, which environment
+variables are required for JWT authentication?
 ```
 
-The exact number of chunks may vary depending on the document content and chunking configuration.
+The corresponding tools are `GetDeploymentStatus`, `GetRecentErrors`, and `SearchDocumentsAsync`. Tool choice is still made by the model, so the exact calls may vary.
 
-## Example Questions
+### Test Multiple Tools
 
-### General question
+This prompt successfully triggered all three tools during the Part 2 article's test:
 
 ```text
-What is the difference between HTTP GET and POST?
+I need a complete Product API diagnostic report. Check the deployment
+status, retrieve recent application errors, and search the documentation
+for HTTP 401 troubleshooting. Include findings from all three sources.
 ```
 
-This does not require Product API-specific information. The model may answer without calling the documentation tool.
-
-### Product API-specific question
+Observed tool calls in that run:
 
 ```text
-Which environment variable configures the JWT authority for the Product API?
+[Tool] SearchDocuments: HTTP 401 troubleshooting
+[Tool] GetRecentErrors
+[Tool] GetDeploymentStatus
 ```
 
-Here the answer exists only in the demo documentation, so the agent can use the document search tool.
+The agent returned a report combining deployment information, recent authentication errors, and troubleshooting documentation. The tool order was chosen by the model, not hard-coded by the application.
 
-You may see output similar to:
+### Test Conversation State
+
+Ask several questions in the **same application run**:
 
 ```text
-[Tool] SearchDocuments: Product API JWT authority environment variable
+You: What version of the Product API is running in production?
+You: How many replicas does that version have?
+You: Can you summarize what we just discussed?
 ```
 
-The exact generated query may vary between runs.
+The reused `AgentSession` makes the previous conversation available when answering follow-up questions. The quality of the answers still depends on the model.
 
-### More complex question
+## Observed Limitations
 
-```text
-After deploying the Product API to Kubernetes, some requests return HTTP 401.
-Which configuration should I check, and what diagnostic information is available?
-```
+The Part 2 experiments with local `llama3.2` showed important differences between **available tools** and **tools actually invoked**:
 
-This question can require information from authentication, deployment, troubleshooting, and observability documents.
+- For some troubleshooting prompts, the agent called only `SearchDocumentsAsync` or `GetRecentErrors` before answering, despite having three tools available.
+- A more explicit request for a diagnostic report produced a successful three-tool run.
+- In some responses, the model included claims not supported by the retrieved results. For example, it suggested that a token might be expired when the simulated logs only showed issuer-validation failures.
 
-The important difference from the previous RAG application is that retrieval is no longer executed unconditionally. The model can decide whether the documentation tool is needed.
+**Successful tool execution does not guarantee a fully grounded answer.** Verify conclusions against the actual tool results, especially for operational or security-sensitive decisions.
+
+Better tool descriptions and instructions may improve behavior but cannot guarantee that every tool will be called or that a specific sequence will be followed. If mandatory checks must always run, a structured workflow is more predictable than relying solely on model-driven tool selection.
+
+The upcoming Agent Part 3 will explore **workflows** and **human-in-the-loop approvals**.
 
 ## Configuration
 
-The default configuration used by the sample application is:
+The sample's defaults in `Program.cs` are:
 
 ```csharp
 const string OllamaUrl = "http://localhost:11434";
-
 const string ChatModel = "llama3.2";
 const string EmbeddingModel = "nomic-embed-text";
 
@@ -407,31 +453,35 @@ const string QdrantHost = "localhost";
 const int QdrantPort = 6334;
 
 const string CollectionName = "local-rag-agent";
-
 const int MaxTokensPerChunk = 200;
 const int OverlapTokens = 30;
 ```
 
-`DocumentSearchService` also uses:
+`DocumentSearchService` uses:
 
 ```csharp
-const int TopResults = 3;
-const double MinimumScore = 0.5;
+private const int TopResults = 3;
+private const double MinimumScore = 0.5;
 ```
 
-If your services run on different ports or hosts, update these values accordingly.
+Adjust endpoints and configuration values for your environment.
 
 ## Article Versions
 
-Each article corresponds to a tagged version of the repository:
+The series has progressed through the following stages:
 
-- `part-1` — Initial project setup.
-- `part-2` — Manual RAG implementation with Ollama and Qdrant.
-- `part-3` — RAG implementation using `Microsoft.Extensions.AI` and `Microsoft.Extensions.VectorData`.
-- `part-4` — Document ingestion using `Microsoft.Extensions.DataIngestion` and token-based chunking.
-- `agent-part-1` — Local AI Agent using Microsoft Agent Framework and document search as a tool.
+| Version | Focus |
+| --- | --- |
+| `part-1` | Initial local RAG setup |
+| `part-2` | Manual RAG pipeline with Ollama and Qdrant |
+| `part-3` | RAG using `Microsoft.Extensions.AI` and `Microsoft.Extensions.VectorData` |
+| `part-4` | Document ingestion with `Microsoft.Extensions.DataIngestion` |
+| `agent-part-1` | AI agent with document retrieval as a tool |
+| **Agent Part 2 (current)** | Multiple tools and conversation state |
 
-You can check out the agent version using:
+The labels above describe the series' stages. See the repository's [tags](https://github.com/ottorinobruni/LocalRagDemo/tags) for the actual available Git tags; a new Part 2 tag should only be referenced after it has been created.
+
+To explore a previous tagged agent version, if available:
 
 ```bash
 git checkout agent-part-1
@@ -440,6 +490,7 @@ git checkout agent-part-1
 ## Resources
 
 - [Microsoft Agent Framework](https://learn.microsoft.com/agent-framework/)
+- [Microsoft Agent Framework – Sessions](https://learn.microsoft.com/en-us/agent-framework/agents/conversations/session)
 - [Microsoft.Extensions.AI](https://learn.microsoft.com/dotnet/ai/microsoft-extensions-ai)
 - [Microsoft.Extensions.VectorData](https://learn.microsoft.com/dotnet/ai/vector-data)
 - [Microsoft.Extensions.DataIngestion](https://learn.microsoft.com/dotnet/ai/conceptual/data-ingestion)
@@ -454,7 +505,7 @@ git checkout agent-part-1
 Created by **Ottorino Bruni**.
 
 - Blog: [ottorinobruni.com](https://www.ottorinobruni.com/)
-- LinkedIn: [www.linkedin.com/in/ottorinobruni](https://www.linkedin.com/in/ottorinobruni/)
+- LinkedIn: [linkedin.com/in/ottorinobruni](https://www.linkedin.com/in/ottorinobruni/)
 - X / Twitter: [@ottorinobruni](https://twitter.com/ottorinobruni)
 
-If you found the project useful, you can follow the complete explanation in the related article series linked above.
+If you found this project useful, explore the articles linked above to follow its evolution from a local RAG pipeline to a tool-enabled AI agent.
